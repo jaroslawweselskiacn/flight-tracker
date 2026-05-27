@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar Lotniczy – Wrocław</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#060d14;color:#00e5ff;font-family:'Share Tech Mono',monospace;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .panel{width:100%;max-width:640px;background:#04111a;border:1px solid #0a2030;border-radius:12px;padding:24px;animation:fadeIn .4s ease}
+  .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .sys{font-size:10px;letter-spacing:3px;color:#1a5060}
+  .live{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:2px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#00ff88;animation:pulse 1.4s infinite}
+  .dot.stale{background:#334;animation:none}
+  .dot.err{background:#ff4444;animation:none}
+  .callsign{font-size:42px;letter-spacing:5px;line-height:1;margin-bottom:2px;transition:color .5s}
+  .callsign.stale{color:#223}
+  .airline{font-size:12px;letter-spacing:2px;color:#1a8090;margin-bottom:18px;min-height:16px;transition:color .5s}
+  .airline.stale{color:#111a1a}
+  .route{display:flex;align-items:center;background:#060d14;border:1px solid #0a2030;border-radius:8px;padding:10px 16px;margin-bottom:14px;transition:opacity .5s}
+  .route.stale{opacity:.2}
+  .iata{font-size:26px;letter-spacing:2px}
+  .arrow-line{flex:1;height:1px;background:#0a2030;margin:0 12px;position:relative}
+  .arrow-line::after{content:'›';position:absolute;top:-10px;left:50%;transform:translateX(-50%);color:#1a5060;font-size:14px}
+  .route-sub{font-size:10px;color:#1a5060;margin-top:2px;letter-spacing:1px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+  .stat{background:#060d14;border:1px solid #0a2030;border-radius:8px;padding:10px 12px;transition:opacity .5s}
+  .stat.stale{opacity:.2}
+  .stat-label{font-size:9px;color:#1a5060;letter-spacing:2px;margin-bottom:4px}
+  .stat-val{font-size:17px;color:#00e5ff}
+  .stat-val.stale{color:#1a3040}
+  .stat-unit{font-size:9px;color:#1a5060;margin-left:2px}
+  .actype{background:#060d14;border:1px solid #0a2030;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;transition:opacity .5s}
+  .actype.stale{opacity:.2}
+  .bottom{display:flex;justify-content:space-between;align-items:center;font-size:9px;color:#1a3040;letter-spacing:1px;margin-top:12px}
+  .dist-badge{background:#060d14;border:1px solid #00e5ff22;border-radius:99px;padding:3px 10px;font-size:10px;color:#00e5ff}
+  .dist-badge.stale{color:#1a3040;border-color:#0a1520}
+  .no-data{text-align:center;padding:40px 20px;color:#1a4050}
+  .no-data-title{font-size:20px;letter-spacing:3px;margin-bottom:8px}
+  .no-data-sub{font-size:11px;letter-spacing:2px;line-height:1.8}
+  .spinner{width:32px;height:32px;border:2px solid #0a2030;border-top-color:#00e5ff;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+  .stale-label{font-size:9px;color:#1a4050;letter-spacing:2px;text-align:center;margin-bottom:10px}
+  .range-bar{background:#060d14;border:1px solid #0a2030;border-radius:8px;padding:8px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+  .range-label{font-size:9px;color:#1a5060;letter-spacing:2px;white-space:nowrap}
+  input[type=range]{flex:1;accent-color:#00e5ff;height:3px}
+  .range-val{font-size:11px;color:#00e5ff;min-width:48px;text-align:right}
+  .credit{font-size:9px;color:#0a2030;text-align:center;margin-top:10px;letter-spacing:1px}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="top-bar">
+    <span class="sys">RADAR LOTNICZY / WROCŁAW</span>
+    <span class="live"><span class="dot" id="dot"></span><span id="live-txt">LIVE</span></span>
+  </div>
+  <div class="range-bar">
+    <span class="range-label">ZASIĘG</span>
+    <input type="range" id="range-slider" min="10" max="150" value="60" step="5">
+    <span class="range-val"><span id="range-val">60</span> km</span>
+  </div>
+  <div id="content">
+    <div class="no-data"><div class="spinner"></div><div class="no-data-title">INICJALIZACJA</div><div class="no-data-sub">pobieranie danych...</div></div>
+  </div>
+  <div class="bottom">
+    <span id="updated">–</span>
+    <span id="count-info" style="color:#1a3040">–</span>
+  </div>
+</div>
+<div class="credit">dane: adsb.fi open data</div>
+
+<script>
+const HOME_LAT = 51.141866533668555;
+const HOME_LON = 17.148976627342574;
+
+const AIRLINES = {
+  LOT:'LOT Polish Airlines', LH:'Lufthansa', FR:'Ryanair', W6:'Wizz Air',
+  EW:'Eurowings', BA:'British Airways', AF:'Air France', KL:'KLM',
+  U2:'easyJet', VY:'Vueling', AZ:'ITA Airways', OS:'Austrian Airlines',
+  SN:'Brussels Airlines', SK:'SAS', AY:'Finnair', IB:'Iberia',
+  TP:'TAP Portugal', EI:'Aer Lingus', TK:'Turkish Airlines', QR:'Qatar Airways',
+  EK:'Emirates', LX:'Swiss', DL:'Delta Air Lines', UA:'United Airlines',
+  AA:'American Airlines', RYR:'Ryanair', DLH:'Lufthansa', BAW:'British Airways',
+  AFR:'Air France', KLM:'KLM', WZZ:'Wizz Air', VOE:'Volotea',
+  VLG:'Vueling', IBE:'Iberia', AUA:'Austrian Airlines', SWR:'Swiss',
+  EZY:'easyJet', BEL:'Brussels Airlines', SAS:'SAS Scandinavian',
+  THY:'Turkish Airlines', UAE:'Emirates', QTR:'Qatar Airways',
+  CSN:'China Southern', CCA:'Air China', CES:'China Eastern',
+};
+
+const TYPES = {
+  B738:'Boeing 737-800', B739:'Boeing 737-900', B737:'Boeing 737-700',
+  B735:'Boeing 737-500', B736:'Boeing 737-600',
+  B744:'Boeing 747-400', B748:'Boeing 747-8', B74F:'Boeing 747-400F',
+  B752:'Boeing 757-200', B753:'Boeing 757-300',
+  B762:'Boeing 767-200', B763:'Boeing 767-300', B764:'Boeing 767-400',
+  B772:'Boeing 777-200', B773:'Boeing 777-300', B77W:'Boeing 777-300ER',
+  B788:'Boeing 787-8', B789:'Boeing 787-9', B78X:'Boeing 787-10',
+  A19N:'Airbus A319neo', A20N:'Airbus A320neo', A21N:'Airbus A321neo',
+  A319:'Airbus A319', A320:'Airbus A320', A321:'Airbus A321',
+  A318:'Airbus A318', A332:'Airbus A330-200', A333:'Airbus A330-300',
+  A339:'Airbus A330-900neo', A343:'Airbus A340-300', A345:'Airbus A340-500',
+  A346:'Airbus A340-600', A359:'Airbus A350-900', A35K:'Airbus A350-1000',
+  A388:'Airbus A380-800', A225:'Antonov An-225',
+  E170:'Embraer E170', E175:'Embraer E175', E190:'Embraer E190', E195:'Embraer E195',
+  E75L:'Embraer E175-E2', E290:'Embraer E190-E2', E295:'Embraer E195-E2',
+  AT72:'ATR 72', AT76:'ATR 72-600', DH8D:'Dash 8 Q400',
+  C172:'Cessna 172', C208:'Cessna Caravan', C25A:'Citation CJ2',
+  GL5T:'Bombardier Global 5000', CL35:'Challenger 350',
+};
+
+let lastAc = null;
+let rangeKm = 60;
+
+function deg2rad(d){ return d * Math.PI / 180; }
+
+function distKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = deg2rad(lat2-lat1), dLon = deg2rad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(deg2rad(lat1))*Math.cos(deg2rad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getAirline(cs){
+  if(!cs) return '–';
+  const clean = cs.trim().replace(/\d/g,'').toUpperCase();
+  return AIRLINES[clean] || AIRLINES[cs.trim().substring(0,3).toUpperCase()] || '–';
+}
+
+function getType(t){
+  if(!t) return '–';
+  return TYPES[t.toUpperCase()] || t.toUpperCase();
+}
+
+function kmhFromKnots(k){ return k != null ? Math.round(k * 1.852) : null; }
+function ftToM(f){ return f != null && f !== 'ground' ? Math.round(f * 0.3048) : null; }
+
+function renderAc(ac, stale){
+  const s = stale ? 'stale' : '';
+  const cs = (ac.flight || ac.hex || 'NIEZNANY').trim();
+  const al = getAirline(cs);
+  const type = getType(ac.t || ac.type_code);
+  const dist = ac._dist != null ? ac._dist.toFixed(1) : '–';
+  const alt = ftToM(ac.alt_baro !== undefined ? ac.alt_baro : ac.alt_geom);
+  const spd = kmhFromKnots(ac.gs);
+  const hdg = ac.track != null ? Math.round(ac.track) : null;
+  const reg = ac.r || '–';
+
+  return `
+    ${stale ? '<div class="stale-label">OSTATNI WIDZIANY SAMOLOT</div>' : ''}
+    <div class="callsign ${s}">${cs}</div>
+    <div class="airline ${s}">${al}&nbsp;·&nbsp;<span style="color:${stale?'#111a1a':'#00e5ff55'}">${type}</span></div>
+    <div class="route ${s}">
+      <div>
+        <div class="iata">???</div>
+        <div class="route-sub">skąd nieznane</div>
+      </div>
+      <div class="arrow-line"></div>
+      <div style="text-align:right">
+        <div class="iata">???</div>
+        <div class="route-sub" style="text-align:right">dokąd nieznane</div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="stat ${s}">
+        <div class="stat-label">WYSOKOŚĆ</div>
+        <div class="stat-val ${s}">${alt != null ? alt.toLocaleString('pl-PL') : '–'}<span class="stat-unit">m</span></div>
+      </div>
+      <div class="stat ${s}">
+        <div class="stat-label">PRĘDKOŚĆ</div>
+        <div class="stat-val ${s}">${spd != null ? spd : '–'}<span class="stat-unit">km/h</span></div>
+      </div>
+      <div class="stat ${s}">
+        <div class="stat-label">KURS</div>
+        <div class="stat-val ${s}">${hdg != null ? hdg : '–'}<span class="stat-unit">°</span></div>
+      </div>
+    </div>
+    <div class="actype ${s}">
+      <span class="stat-label">TYP STATKU POWIETRZNEGO</span>
+      <span style="font-size:13px;color:${stale?'#1a3040':'#00e5ff'}">${type}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="stat-label">ICAO: ${(ac.hex||'–').toUpperCase()}&nbsp;&nbsp;REJ: ${reg}</span>
+      <span class="dist-badge ${s}">${dist} km</span>
+    </div>`;
+}
+
+async function fetchFlights(){
+  const distNm = Math.round(rangeKm / 1.852);
+  const url = `https://opendata.adsb.fi/api/v2/lat/${HOME_LAT}/lon/${HOME_LON}/dist/${distNm}`;
+
+  try {
+    const r = await fetch(url);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const states = (data.ac || []);
+    const now = new Date();
+
+    const aircraft = states
+      .filter(a => a.lat != null && a.lon != null && a.alt_baro !== 'ground')
+      .map(a => ({
+        ...a,
+        _dist: distKm(HOME_LAT, HOME_LON, a.lat, a.lon)
+      }))
+      .sort((a, b) => a._dist - b._dist);
+
+    document.getElementById('dot').className = 'dot';
+    document.getElementById('live-txt').textContent = 'LIVE';
+
+    if(aircraft.length > 0){
+      lastAc = aircraft[0];
+      document.getElementById('content').innerHTML = renderAc(lastAc, false);
+      document.getElementById('updated').textContent = 'AKTUALIZACJA: ' + now.toLocaleTimeString('pl-PL');
+      document.getElementById('count-info').textContent = aircraft.length + ' samolotów w zasięgu';
+    } else {
+      if(lastAc){
+        document.getElementById('content').innerHTML = renderAc(lastAc, true);
+        document.getElementById('updated').textContent = 'BRAK W ZASIĘGU · ' + now.toLocaleTimeString('pl-PL');
+      } else {
+        document.getElementById('content').innerHTML = `<div class="no-data"><div class="no-data-title">BRAK SAMOLOTÓW</div><div class="no-data-sub">w promieniu ${rangeKm} km<br>spróbuj zwiększyć zasięg</div></div>`;
+        document.getElementById('updated').textContent = 'SPRAWDZONO: ' + now.toLocaleTimeString('pl-PL');
+      }
+      document.getElementById('count-info').textContent = '0 samolotów';
+    }
+  } catch(e) {
+    document.getElementById('dot').className = 'dot err';
+    document.getElementById('live-txt').textContent = 'BŁĄD';
+    if(lastAc){
+      document.getElementById('content').innerHTML = renderAc(lastAc, true);
+    } else {
+      document.getElementById('content').innerHTML = `<div class="no-data"><div class="no-data-title">BŁĄD</div><div class="no-data-sub">${e.message}<br><br>odświeży się za 15s</div></div>`;
+    }
+  }
+}
+
+document.getElementById('range-slider').addEventListener('input', function(){
+  rangeKm = parseInt(this.value);
+  document.getElementById('range-val').textContent = rangeKm;
+});
+document.getElementById('range-slider').addEventListener('change', fetchFlights);
+
+fetchFlights();
+setInterval(fetchFlights, 15000);
+</script>
+</body>
+</html>
