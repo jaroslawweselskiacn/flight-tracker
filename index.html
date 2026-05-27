@@ -2,131 +2,673 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Radar Lotniczy</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-  body { font-family: monospace; background: #fff; color: #000; padding: 20px; max-width: 600px; margin: 0 auto; }
-  h1 { font-size: 16px; margin-bottom: 20px; color: #555; }
-  #status { font-size: 12px; color: #888; margin-bottom: 16px; }
-  table { width: 100%; border-collapse: collapse; }
-  td { padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 14px; }
-  td:first-child { color: #888; font-size: 12px; width: 140px; }
-  td:last-child { font-weight: bold; }
-  #callsign-row td:last-child { font-size: 32px; letter-spacing: 3px; padding-top: 4px; padding-bottom: 4px; }
-  #error { color: red; font-size: 13px; margin-top: 10px; }
-  #raw { font-size: 10px; color: #aaa; margin-top: 20px; word-break: break-all; display: none; }
+  :root {
+    --bg: #0a0e1a;
+    --bg2: #111827;
+    --border: #1e2d4a;
+    --text: #e8f4fd;
+    --text-dim: #7a9abf;
+    --text-muted: #4a6080;
+    --accent: #f5c842;
+    --accent2: #7eb8f7;
+    --green: #4ade80;
+    --overlay: rgba(8,12,24,0.78);
+  }
+  .day {
+    --bg: #eef1f6;
+    --bg2: #ffffff;
+    --border: #ced8e8;
+    --text: #0f172a;
+    --text-dim: #4b6080;
+    --text-muted: #8a9ab0;
+    --accent: #1d4ed8;
+    --accent2: #1d4ed8;
+    --green: #16a34a;
+    --overlay: rgba(238,241,246,0.85);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Share Tech Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background .6s, color .6s;
+    position: relative;
+  }
+
+  #bg-logo {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 0;
+    pointer-events: none;
+  }
+  #logo-bg-badge {
+    width: 380px;
+    height: 380px;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 1s ease, background .5s;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 140px;
+    letter-spacing: 0;
+  }
+  #logo-bg-badge.visible { opacity: 0.06; }
+  .day #logo-bg-badge.visible { opacity: 0.05; }
+
+  .topbar, .card, .bottombar, .state-msg { position: relative; z-index: 2; }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 40px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .topbar-left { font-size: 14px; letter-spacing: 4px; text-transform: uppercase; color: var(--text-dim); }
+  .topbar-right { display: flex; align-items: center; gap: 28px; }
+  #clock { font-size: 28px; letter-spacing: 3px; color: var(--accent); }
+  .live-indicator { display: flex; align-items: center; gap: 8px; font-size: 13px; letter-spacing: 3px; color: var(--text-dim); }
+  .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); animation: blink 1.4s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+
+  .theme-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+  .toggle-track { width: 56px; height: 30px; background: var(--border); border-radius: 15px; position: relative; transition: background .4s; border: 1px solid var(--border); }
+  .toggle-knob { width: 24px; height: 24px; background: var(--accent); border-radius: 50%; position: absolute; top: 2px; left: 3px; transition: transform .4s cubic-bezier(.34,1.56,.64,1); }
+  .day .toggle-knob { transform: translateX(26px); }
+  .toggle-icon { font-size: 18px; }
+
+  .card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 32px 48px 28px;
+  }
+  .card.stale { opacity: 0.25; }
+
+  /* ROUTE */
+  .route {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    margin-bottom: 20px;
+  }
+  .airport { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+
+  .flap-group { display: flex; gap: 10px; margin-bottom: 12px; }
+  .flap {
+    width: 80px; height: 106px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 68px;
+    color: var(--accent);
+    position: relative; overflow: hidden;
+    transition: background .6s, border-color .6s;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+  }
+  .flap::after { content:''; position:absolute; left:0; right:0; top:50%; height:1px; background:var(--border); z-index:2; }
+  .flap.flipping { animation: flip .2s ease-in-out; }
+  @keyframes flip {
+    0%   { transform: rotateX(0); }
+    45%  { transform: rotateX(-85deg); opacity:.2; }
+    55%  { transform: rotateX(85deg); opacity:.2; }
+    100% { transform: rotateX(0); }
+  }
+
+  .airport-city {
+    font-size: 15px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--text-dim); text-align: center; max-width: 240px;
+    min-height: 20px; margin-bottom: 10px;
+  }
+  .weather-badge {
+    font-size: 18px; color: var(--text-dim);
+    display: flex; align-items: center; gap: 8px; min-height: 26px;
+  }
+  .weather-temp { color: var(--text); font-size: 20px; }
+
+  .route-center { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+  .callsign-display { font-size: 22px; letter-spacing: 6px; color: var(--accent2); }
+  .route-arrow { display: flex; align-items: center; width: 100%; gap: 12px; }
+  .route-arrow-line { flex:1; height:1px; background:var(--border); }
+  .route-arrow-icon { font-size: 24px; color: var(--text-dim); }
+
+  .flight-meta {
+    text-align: center;
+    margin-bottom: 22px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .airline-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .airline-badge {
+    height: 44px;
+    min-width: 60px;
+    padding: 0 14px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    transition: background .4s, color .4s;
+    flex-shrink: 0;
+  }
+
+  .airline { font-size: 30px; letter-spacing: 5px; text-transform: uppercase; color: var(--text); }
+  .actype-reg {
+    font-size: 15px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--text-dim); display: flex; align-items: center; justify-content: center;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .reg-inline { color: var(--accent); font-size: 17px; }
+
+  /* STATS */
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; }
+  .stat { display: flex; flex-direction: column; align-items: center; padding: 0 20px; border-right: 1px solid var(--border); }
+  .stat:last-child { border-right: none; }
+  .stat-label { font-size: 12px; letter-spacing: 4px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+  .stat-value { font-size: 64px; letter-spacing: -2px; line-height: 1; color: var(--text); }
+  .stat-sub { font-size: 15px; letter-spacing: 1px; color: var(--text-dim); margin-top: 6px; }
+  .stat-unit { font-size: 13px; letter-spacing: 3px; color: var(--text-dim); margin-top: 6px; text-transform: uppercase; }
+
+  .bottombar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 40px; border-top: 1px solid var(--border);
+    flex-shrink: 0; font-size: 12px; letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+  }
+  #countdown-val { color: var(--text-dim); }
+
+  .state-msg {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; letter-spacing: 5px; text-transform: uppercase; color: var(--text-muted);
+    position: relative; z-index: 2;
+  }
+
+  body::before {
+    content:''; position:fixed; inset:0; z-index:1; pointer-events:none;
+    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 4px);
+    transition: opacity .6s;
+  }
+  .day::before { opacity:0; }
+  .squawk-badge {
+    font-size: 13px; letter-spacing: 2px; padding: 4px 10px;
+    border-radius: 6px; font-weight: bold;
+    display: none;
+  }
+  .squawk-badge.emergency { display: block; background: #c0392b; color: #fff; animation: blink 1s infinite; }
+  .squawk-badge.radio { display: block; background: #e67e22; color: #fff; }
+  .squawk-badge.hijack { display: block; background: #8e44ad; color: #fff; animation: blink .5s infinite; }
+  .squawk-badge.normal { display: block; background: var(--border); color: var(--text-dim); }
+  .stat-value-row { display: flex; align-items: baseline; gap: 8px; justify-content: center; }
+  .trend-arrow { font-size: 32px; line-height: 1; }
+  .trend-up { color: #4ade80; }
+  .trend-down { color: #f87171; }
+  .trend-level { color: var(--text-dim); }
 </style>
 </head>
 <body>
-<h1>RADAR LOTNICZY — WROCŁAW</h1>
-<div id="status">Ładowanie...</div>
-<table id="data-table" style="display:none">
-  <tr id="callsign-row"><td>Nr lotu</td><td id="callsign">–</td></tr>
-  <tr><td>Linia lotnicza</td><td id="airline">–</td></tr>
-  <tr><td>Typ samolotu</td><td id="actype">–</td></tr>
-  <tr><td>Wysokość</td><td id="alt">–</td></tr>
-  <tr><td>Prędkość</td><td id="spd">–</td></tr>
-  <tr><td>Kurs</td><td id="hdg">–</td></tr>
-  <tr><td>Odległość</td><td id="dist">–</td></tr>
-  <tr><td>ICAO hex</td><td id="icao">–</td></tr>
-  <tr><td>Rejestracja</td><td id="reg">–</td></tr>
-</table>
-<div id="error"></div>
-<div id="raw"></div>
+
+<div id="bg-logo"><div id="logo-bg-badge"></div></div>
+
+<div class="topbar">
+  <span class="topbar-left">WRO &mdash; Radar Lotniczy</span>
+  <div class="topbar-right">
+    <div class="theme-toggle" onclick="toggleTheme()">
+      <span class="toggle-icon">🌙</span>
+      <div class="toggle-track"><div class="toggle-knob"></div></div>
+      <span class="toggle-icon">☀️</span>
+    </div>
+    <div class="live-indicator"><span class="live-dot"></span><span>LIVE</span></div>
+    <span id="clock">--:--:--</span>
+  </div>
+</div>
+
+<div id="main-card" class="card" style="display:none">
+  <div>
+    <div class="route">
+      <div class="airport">
+        <div class="flap-group" id="orig-flaps"></div>
+        <div class="airport-city" id="orig-city"></div>
+        <div class="weather-badge" id="orig-weather"></div>
+      </div>
+      <div class="route-center">
+        <div class="callsign-display" id="callsign">––––––</div>
+        <div class="route-arrow">
+          <div class="route-arrow-line"></div>
+          <div class="route-arrow-icon">✈</div>
+          <div class="route-arrow-line"></div>
+        </div>
+      </div>
+      <div class="airport">
+        <div class="flap-group" id="dest-flaps"></div>
+        <div class="airport-city" id="dest-city"></div>
+        <div class="weather-badge" id="dest-weather"></div>
+      </div>
+    </div>
+
+    <div class="flight-meta">
+      <div class="airline-row">
+        <div class="airline-badge" id="airline-badge"></div>
+        <div class="airline" id="airline">–</div>
+        <div class="squawk-badge" id="squawk-badge"></div>
+      </div>
+      <div class="actype-reg">
+        <span id="actype">–</span>
+        <span>·</span>
+        <span class="reg-inline" id="reg-inline">–</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Wysokość</div>
+      <div class="stat-value-row">
+        <span class="stat-value" id="alt-ft">–</span>
+        <span class="trend-arrow" id="alt-trend"></span>
+      </div>
+      <div class="stat-sub" id="alt-m"></div>
+      <div class="stat-sub" id="alt-target"></div>
+      <div class="stat-unit">Stóp</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Prędkość</div>
+      <div class="stat-value" id="spd">–</div>
+      <div class="stat-unit">Węzłów</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Dystans</div>
+      <div class="stat-value" id="dist">–</div>
+      <div class="stat-unit">km od nas</div>
+    </div>
+  </div>
+</div>
+
+<div id="state-msg" class="state-msg">Brak lotów w pobliżu</div>
+
+<div class="bottombar">
+  <span id="status-txt">–</span>
+  <span>Odświeżenie za <span id="countdown-val">15</span>s</span>
+</div>
 
 <script>
-const LAT = 51.141866533668555;
-const LON = 17.148976627342574;
-const DIST_NM = 100; // mila morska, ~185km
+const LAT = 51.14648791656428;
+const LON = 17.149763026163694;
+const PROXY = 'https://adsb-proxy.weselski-jarek.workers.dev';
 
-const AIRLINES = {
-  LOT:'LOT Polish Airlines', LH:'Lufthansa', FR:'Ryanair', W6:'Wizz Air',
-  EW:'Eurowings', BA:'British Airways', AF:'Air France', KL:'KLM',
-  U2:'easyJet', OS:'Austrian', TK:'Turkish Airlines', QR:'Qatar Airways',
-  EK:'Emirates', LX:'Swiss', RYR:'Ryanair', DLH:'Lufthansa',
-  WZZ:'Wizz Air', EZY:'easyJet', THY:'Turkish Airlines',
+// Logo.dev — darmowy publiczny token
+
+
+// Mapa ICAO prefix -> domena linii lotniczej
+const AIRLINE_DOMAINS = {
+  RYR:'ryanair.com', LOT:'lot.com', WZZ:'wizzair.com', LH:'lufthansa.com',
+  DLH:'lufthansa.com', EZY:'easyjet.com', WZZ:'wizzair.com', WMT:'wizzair.com',
+  EW:'eurowings.com', BA:'britishairways.com', BAW:'britishairways.com',
+  AF:'airfrance.com', AFR:'airfrance.com', KL:'klm.com', KLM:'klm.com',
+  U2:'easyjet.com', OS:'austrian.com', AUA:'austrian.com',
+  TK:'turkishairlines.com', THY:'turkishairlines.com',
+  QR:'qatarairways.com', QTR:'qatarairways.com',
+  EK:'emirates.com', UAE:'emirates.com',
+  LX:'swiss.com', SWR:'swiss.com',
+  TAP:'tap.pt', TP:'tap.pt',
+  ENT:'enterair.pl', BNI:'bielik.pl',
+  ASL:'aslairlines.com', GTI:'atlasair.com',
+  IBE:'iberia.com', AZA:'ita-airways.com',
+  MSC:'airserbia.com', RYS:'ryanair.com',
+  DAL:'delta.com', UAL:'united.com', AAL:'aa.com',
+  SIA:'singaporeair.com', CPA:'cathaypacific.com',
+  ETH:'ethiopianairlines.com', KAL:'koreanair.com',
+  ANA:'ana.co.jp', JAL:'jal.com', VIR:'virginatlantic.com',
+  FDX:'fedex.com', UPS:'ups.com', DHL:'dhl.com',
 };
 
-const TYPES = {
-  B738:'Boeing 737-800', B739:'Boeing 737-900', B737:'Boeing 737',
-  B744:'Boeing 747-400', B788:'Boeing 787-8', B789:'Boeing 787-9',
-  A319:'Airbus A319', A320:'Airbus A320', A321:'Airbus A321',
-  A20N:'Airbus A320neo', A21N:'Airbus A321neo', A19N:'Airbus A319neo',
-  A332:'Airbus A330-200', A333:'Airbus A330-300', A359:'Airbus A350-900',
-  E190:'Embraer E190', E195:'Embraer E195', AT72:'ATR 72', DH8D:'Dash 8 Q400',
-};
-
-function deg2rad(d){ return d*Math.PI/180; }
-function distKm(lat1,lon1,lat2,lon2){
-  const R=6371, dLat=deg2rad(lat2-lat1), dLon=deg2rad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2+Math.cos(deg2rad(lat1))*Math.cos(deg2rad(lat2))*Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-function airline(cs){
-  if(!cs) return '–';
+function getAirlineDomain(cs) {
+  if (!cs) return null;
   const k = cs.trim().replace(/\d/g,'').toUpperCase();
-  return AIRLINES[k] || AIRLINES[cs.trim().slice(0,3).toUpperCase()] || '–';
+  return AIRLINE_DOMAINS[k] || AIRLINE_DOMAINS[cs.trim().slice(0,3).toUpperCase()] || null;
 }
-function actype(t){ return t ? (TYPES[t.toUpperCase()] || t.toUpperCase()) : '–'; }
 
-async function fetch_flights(){
-  document.getElementById('error').textContent = '';
-  const url = `https://opendata.adsb.fi/api/v2/lat/${LAT}/lon/${LON}/dist/${DIST_NM}`;
-  try {
-    const r = await fetch(url);
-    const txt = await r.text();
-    // debug: pokaż raw odpowiedź
-    document.getElementById('raw').textContent = txt.slice(0, 500);
-    document.getElementById('raw').style.display = 'block';
+function setLogo(domain) {
+  const logoEl = document.getElementById('airline-logo');
+  const bgImg = document.getElementById('logo-bg-img');
 
-    if(!r.ok) throw new Error('HTTP ' + r.status + ': ' + txt.slice(0,100));
-    const data = JSON.parse(txt);
-    const ac_list = data.ac || data.aircraft || data || [];
+  if (!domain) {
+    logoEl.classList.remove('loaded'); logoEl.src = '';
+    bgImg.classList.remove('loaded'); bgImg.src = '';
+    return;
+  }
 
-    if(!Array.isArray(ac_list) || ac_list.length === 0){
-      document.getElementById('status').textContent = 'Brak samolotów w zasięgu. Ostatnio sprawdzono: ' + new Date().toLocaleTimeString('pl-PL');
-      document.getElementById('data-table').style.display = 'none';
-      return;
+  const url = `https://img.logokit.com/${domain}`;
+
+  // Logo w nagłówku
+  logoEl.classList.remove('loaded');
+  logoEl.onload = () => logoEl.classList.add('loaded');
+  logoEl.onerror = () => { logoEl.src = ''; };
+  logoEl.src = url;
+
+  // Logo jako delikatne tło
+  bgImg.classList.remove('loaded');
+  bgImg.onload = () => bgImg.classList.add('loaded');
+  bgImg.onerror = () => { bgImg.src = ''; };
+  bgImg.src = url;
+}
+
+// THEME
+let manualOverride = null;
+function getAutoTheme(){ const h=new Date().getHours(); return(h>=6&&h<22)?'day':'night'; }
+function applyTheme(t){ document.body.classList.toggle('day',t==='day'); }
+function toggleTheme(){
+  const cur=document.body.classList.contains('day')?'day':'night';
+  manualOverride=cur==='day'?'night':'day';
+  applyTheme(manualOverride);
+}
+applyTheme(getAutoTheme());
+setInterval(()=>{
+  const h=new Date().getHours(),m=new Date().getMinutes();
+  if((h===6||h===22)&&m===0) manualOverride=null;
+  if(!manualOverride) applyTheme(getAutoTheme());
+},60000);
+
+// WEATHER
+const WMO={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',96:'⛈️',99:'⛈️'};
+const wCache={};
+async function fetchWeather(lat,lon,key){
+  if(wCache[key]&&Date.now()-wCache[key].ts<600000) return wCache[key].data;
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`);
+    if(!r.ok) return null;
+    const d=await r.json();
+    const res={temp:Math.round(d.current.temperature_2m),icon:WMO[d.current.weathercode]||'🌡️'};
+    wCache[key]={data:res,ts:Date.now()};
+    return res;
+  }catch(e){return null;}
+}
+function showWeather(elId,w){
+  const el=document.getElementById(elId);
+  el.innerHTML=w?`<span>${w.icon}</span><span class="weather-temp">${w.temp}°C</span>`:'';
+}
+
+// AIRLINES / TYPES
+const AIRLINES={
+  LOT:'LOT Polish Airlines',LH:'Lufthansa',FR:'Ryanair',W6:'Wizz Air',
+  EW:'Eurowings',BA:'British Airways',AF:'Air France',KL:'KLM',
+  U2:'easyJet',OS:'Austrian Airlines',TK:'Turkish Airlines',QR:'Qatar Airways',
+  EK:'Emirates',LX:'SWISS',RYR:'Ryanair',DLH:'Lufthansa',WZZ:'Wizz Air',
+  EZY:'easyJet',THY:'Turkish Airlines',TAP:'TAP Portugal',SWR:'SWISS',
+  ENT:'Enter Air',BNI:'Bielik Air',ASL:'ASL Airlines',GTI:'Atlas Air',
+  BBG:'Bluebird Nordic',WMT:'Wizz Air Malta',RYS:'Ryanair Sun',
+  AUA:'Austrian Airlines',IBE:'Iberia',MSC:'Air Serbia',AZA:'ITA Airways',
+  UAE:'Emirates',QTR:'Qatar Airways',SIA:'Singapore Airlines',
+  CPA:'Cathay Pacific',ETH:'Ethiopian Airlines',KAL:'Korean Air',
+  ANA:'All Nippon Airways',JAL:'Japan Airlines',VIR:'Virgin Atlantic',
+  DAL:'Delta Air Lines',UAL:'United Airlines',AAL:'American Airlines',
+  FDX:'FedEx Express',UPS:'UPS Airlines',DHL:'DHL Air',
+};
+const TYPES={
+  B738:'Boeing 737-800',B739:'Boeing 737-900',B38M:'Boeing 737 MAX 8',
+  B37M:'Boeing 737 MAX 7',B39M:'Boeing 737 MAX 9',
+  B744:'Boeing 747-400',B748:'Boeing 747-8',B752:'Boeing 757-200',
+  B763:'Boeing 767-300',B772:'Boeing 777-200',B773:'Boeing 777-300',
+  B77W:'Boeing 777-300ER',B788:'Boeing 787-8',B789:'Boeing 787-9',B78X:'Boeing 787-10',
+  A19N:'Airbus A319neo',A20N:'Airbus A320neo',A21N:'Airbus A321neo',
+  A318:'Airbus A318',A319:'Airbus A319',A320:'Airbus A320',A321:'Airbus A321',
+  A332:'Airbus A330-200',A333:'Airbus A330-300',A339:'Airbus A330-900neo',
+  A359:'Airbus A350-900',A35K:'Airbus A350-1000',A388:'Airbus A380-800',
+  BCS1:'Airbus A220-100',BCS3:'Airbus A220-300',
+  E170:'Embraer E170',E175:'Embraer E175',E190:'Embraer E190',E195:'Embraer E195',
+  E295:'Embraer E195-E2',AT72:'ATR 72',DH8D:'Dash 8 Q400',
+  FA7X:'Dassault Falcon 7X',CL35:'Bombardier Challenger 350',
+  AN12:'Antonov An-12',AN26:'Antonov An-26',IL76:'Ilyushin Il-76',
+};
+
+const COMMERCIAL=/^(LOT|LH|FR|W6|EW|BA|AF|KL|U2|OS|TK|QR|EK|LX|RYR|DLH|WZZ|EZY|THY|TAP|SWR|ENT|BNI|ASL|GTI|BBG|WMT|RYS|AUA|IBE|MSC|AZA|UAE|QTR|SIA|CPA|ETH|KAL|ANA|JAL|VIR|DAL|UAL|AAL|FDX|UPS|DHL)/;
+const MILITARY=/^(POLF|PLF|NATO|USAF|RCH|REACH|GAF|FAF|RAF|MRTT|AWACS|JAKE|VENUS|EVIL|MAGMA|RFN|FORTE)/i;
+
+function isOk(cs){if(!cs)return false;if(MILITARY.test(cs.trim()))return true;return COMMERCIAL.test(cs.trim().replace(/\d/g,'').toUpperCase());}
+function deg2rad(d){return d*Math.PI/180;}
+function distKm(lat1,lon1,lat2,lon2){const R=6371,dLat=deg2rad(lat2-lat1),dLon=deg2rad(lon2-lon1);const a=Math.sin(dLat/2)**2+Math.cos(deg2rad(lat1))*Math.cos(deg2rad(lat2))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
+function getAirline(cs){if(!cs)return null;const k=cs.trim().replace(/\d/g,'').toUpperCase();return AIRLINES[k]||AIRLINES[cs.trim().slice(0,3).toUpperCase()]||null;}
+function getType(t){return t?(TYPES[t.toUpperCase()]||t.toUpperCase()):'–';}
+function setTxt(id,val){document.getElementById(id).textContent=val||'';}
+
+const CHARS='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ';
+function renderFlaps(containerId,text,animate){
+  const container=document.getElementById(containerId);
+  const chars=text.padEnd(3,' ').slice(0,3).toUpperCase().split('');
+  const existing=container.querySelectorAll('.flap');
+  if(existing.length!==3){
+    container.innerHTML='';
+    chars.forEach(ch=>{const d=document.createElement('div');d.className='flap';d.textContent=ch.trim();container.appendChild(d);});
+    return;
+  }
+  chars.forEach((ch,i)=>{
+    const flap=existing[i];const newChar=ch.trim();
+    if(!animate){flap.textContent=newChar;return;}
+    if(flap.textContent===newChar)return;
+    const oldChar=flap.textContent||' ';
+    const oldIdx=Math.max(0,CHARS.indexOf(oldChar.toUpperCase()));
+    const newIdx=Math.max(0,CHARS.indexOf(ch.toUpperCase()));
+    const steps=newIdx>=oldIdx?newIdx-oldIdx:CHARS.length-oldIdx+newIdx;
+    const totalSteps=Math.min(Math.max(steps,1),10);
+    let step=0;
+    const iv=setInterval(()=>{
+      step++;
+      const idx=(oldIdx+Math.ceil((steps/totalSteps)*step))%CHARS.length;
+      flap.textContent=CHARS[idx].trim();
+      flap.classList.remove('flipping');void flap.offsetWidth;flap.classList.add('flipping');
+      if(step>=totalSteps){clearInterval(iv);flap.textContent=newChar;}
+    },90);
+  });
+}
+
+let lastHex=null,lastRoute=null,countdown=15;
+
+// Azymut między dwoma punktami (stopnie)
+function bearing(lat1,lon1,lat2,lon2){
+  const r=Math.PI/180;
+  const dLon=(lon2-lon1)*r;
+  const y=Math.sin(dLon)*Math.cos(lat2*r);
+  const x=Math.cos(lat1*r)*Math.sin(lat2*r)-Math.sin(lat1*r)*Math.cos(lat2*r)*Math.cos(dLon);
+  return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
+// Odległość punktu od odcinka (w km)
+function distPointToSegment(pLat,pLon,aLat,aLon,bLat,bLon){
+  // Przybliżenie płaskie — wystarczy dla naszych celów
+  const R=6371;
+  const toRad=d=>d*Math.PI/180;
+  // Zamień na współrzędne kartezjańskie
+  const ax=(aLon-pLon)*Math.cos(toRad((aLat+pLat)/2))*R*toRad(1);
+  const ay=(aLat-pLat)*R*toRad(1);
+  const bx=(bLon-pLon)*Math.cos(toRad((bLat+pLat)/2))*R*toRad(1);
+  const by=(bLat-pLat)*R*toRad(1);
+  const len2=bx*bx+by*by;
+  if(len2===0) return Math.sqrt(ax*ax+ay*ay);
+  let t=((0-ax)*(bx-ax)+(0-ay)*(by-ay))/len2;
+  t=Math.max(0,Math.min(1,t));
+  const projX=ax+t*(bx-ax);
+  const projY=ay+t*(by-ay);
+  return Math.sqrt(projX*projX+projY*projY);
+}
+
+function validateRoute(ac, route){
+  if(!route?.origLat||!route?.origLon||!route?.destLat||!route?.destLon) return false;
+  if(!ac.lat||!ac.lon) return false;
+
+  // Długość trasy
+  const routeLen=distKm(route.origLat,route.origLon,route.destLat,route.destLon);
+
+  // Odległość samolotu od linii trasy
+  const distFromRoute=distPointToSegment(
+    ac.lat,ac.lon,
+    route.origLat,route.origLon,
+    route.destLat,route.destLon
+  );
+
+  // Tolerancja: 20% długości trasy, min 80 km, max 400 km
+  const tolerance=Math.min(400,Math.max(80,routeLen*0.20));
+  if(distFromRoute>tolerance) return false;
+
+  // Sprawdź kierunek lotu
+  if(ac.track!=null){
+    const bearingAB=bearing(route.origLat,route.origLon,route.destLat,route.destLon);
+    const bearingBA=bearing(route.destLat,route.destLon,route.origLat,route.origLon);
+    const track=ac.track;
+    const diffAB=Math.abs(((track-bearingAB+180)%360)-180);
+    const diffBA=Math.abs(((track-bearingBA+180)%360)-180);
+    if(diffAB>70&&diffBA>70) return false;
+  }
+
+  return true;
+}
+
+async function fetchRoute(cs, ac){
+  try{
+    const clean=cs.trim().replace(/\s/g,'');
+    const r=await fetch(`${PROXY}/route/${clean}`);
+    if(!r.ok) return null;
+    const data=await r.json();
+    if(!data?.airport_codes) return null;
+    const parts=(data._airport_codes_iata||data.airport_codes).split('-');
+    if(parts.length<2) return null;
+    const airports=data._airports||[];
+    const route={
+      origCode:parts[0],origCity:airports[0]?.location||airports[0]?.name||'',
+      origLat:airports[0]?.lat,origLon:airports[0]?.lon,
+      destCode:parts[parts.length-1],destCity:airports[airports.length-1]?.location||airports[airports.length-1]?.name||'',
+      destLat:airports[airports.length-1]?.lat,destLon:airports[airports.length-1]?.lon,
+    };
+    // Waliduj trasę względem aktualnej pozycji samolotu
+    if(!validateRoute(ac, route)) return null;
+    return route;
+  }catch(e){return null;}
+}
+
+async function fetchFlights(){
+  countdown=15;
+  try{
+    const r=await fetch(`${PROXY}?lat=${LAT}&lon=${LON}&dist=27`);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const list=(data.ac||[])
+      .filter(a=>a.lat!=null&&a.lon!=null&&a.alt_baro!=='ground')
+      .filter(a=>isOk((a.flight||'').trim()))
+      .map(a=>({...a,_d:distKm(LAT,LON,a.lat,a.lon)}))
+      .sort((a,b)=>a._d-b._d);
+
+    if(list.length>0){
+      const ac=list[0];
+      const cs=(ac.flight||'').trim();
+      const isNew=lastHex!==ac.hex;
+      if(isNew){lastRoute=await fetchRoute(cs,ac);lastHex=ac.hex;}
+      renderAc(ac,lastRoute,false,isNew);
+      setTxt('status-txt',list.length+' lotów · '+new Date().toLocaleTimeString('pl-PL'));
+    } else {
+      document.getElementById('state-msg').style.display='flex';
+      document.getElementById('main-card').style.display='none';
+      setTxt('status-txt','Brak lotów komercyjnych · '+new Date().toLocaleTimeString('pl-PL'));
     }
+  }catch(e){setTxt('status-txt','Błąd: '+e.message);}
+}
 
-    // filtruj latające, posortuj po odległości
-    const flying = ac_list
-      .filter(a => a.lat != null && a.lon != null && a.alt_baro !== 'ground')
-      .map(a => ({ ...a, _d: distKm(LAT, LON, a.lat, a.lon) }))
-      .sort((a,b) => a._d - b._d);
+async function renderAc(a,route,stale,animate){
+  document.getElementById('state-msg').style.display='none';
+  const card=document.getElementById('main-card');
+  card.style.display='flex';
+  card.className='card'+(stale?' stale':'');
 
-    if(flying.length === 0){
-      document.getElementById('status').textContent = 'Tylko samoloty na ziemi w zasięgu.';
-      document.getElementById('data-table').style.display = 'none';
-      return;
-    }
+  const cs=(a.flight||'').trim()||a.hex||'–';
+  const reg=a.r||'';
 
-    const a = flying[0];
-    const cs = (a.flight || '').trim() || a.hex || '–';
-    const alt_m = a.alt_baro && a.alt_baro !== 'ground' ? Math.round(a.alt_baro * 0.3048) : '–';
-    const spd_kmh = a.gs ? Math.round(a.gs * 1.852) : '–';
+  renderFlaps('orig-flaps',route?.origCode||'???',animate);
+  renderFlaps('dest-flaps',route?.destCode||'???',animate);
+  setTxt('orig-city',route?.origCity||'');
+  setTxt('dest-city',route?.destCity||'');
+  setTxt('callsign',cs);
+  setTxt('airline',getAirline(cs)||cs);
+  setTxt('actype',getType(a.t));
+  setTxt('reg-inline',reg);
 
-    document.getElementById('callsign').textContent = cs;
-    document.getElementById('airline').textContent = airline(cs);
-    document.getElementById('actype').textContent = actype(a.t || a.type_code);
-    document.getElementById('alt').textContent = alt_m !== '–' ? alt_m + ' m' : '–';
-    document.getElementById('spd').textContent = spd_kmh !== '–' ? spd_kmh + ' km/h' : '–';
-    document.getElementById('hdg').textContent = a.track != null ? Math.round(a.track) + '°' : '–';
-    document.getElementById('dist').textContent = a._d.toFixed(1) + ' km';
-    document.getElementById('icao').textContent = (a.hex || '–').toUpperCase();
-    document.getElementById('reg').textContent = a.r || '–';
+  // Wysokość + trend + zadana wysokość
+  if(a.alt_baro&&a.alt_baro!=='ground'){
+    const ft=Math.round(a.alt_baro);
+    const m=Math.round(a.alt_baro*0.3048);
+    setTxt('alt-ft',ft.toLocaleString('pl-PL'));
+    setTxt('alt-m','('+m.toLocaleString('pl-PL')+' m)');
+  } else {setTxt('alt-ft','–');setTxt('alt-m','');}
 
-    document.getElementById('data-table').style.display = 'table';
-    document.getElementById('status').textContent = 'Najbliższy z ' + flying.length + ' samolotów · ' + new Date().toLocaleTimeString('pl-PL');
+  // Trend wysokości (baro_rate: ft/min)
+  const trendEl=document.getElementById('alt-trend');
+  const rate=a.baro_rate;
+  if(rate!=null){
+    if(rate>100){trendEl.textContent='↑';trendEl.className='trend-arrow trend-up';}
+    else if(rate<-100){trendEl.textContent='↓';trendEl.className='trend-arrow trend-down';}
+    else{trendEl.textContent='→';trendEl.className='trend-arrow trend-level';}
+  } else { trendEl.textContent=''; trendEl.className='trend-arrow'; }
 
-  } catch(e) {
-    document.getElementById('error').textContent = 'Błąd: ' + e.message;
-    document.getElementById('status').textContent = 'Nie udało się pobrać danych.';
+  // Zadana wysokość
+  const targetEl=document.getElementById('alt-target');
+  if(a.nav_altitude_mcp&&a.alt_baro&&a.alt_baro!=='ground'){
+    const diff=a.nav_altitude_mcp-Math.round(a.alt_baro);
+    if(Math.abs(diff)>200){
+      targetEl.textContent='cel: '+Math.round(a.nav_altitude_mcp).toLocaleString('pl-PL')+' ft';
+    } else { targetEl.textContent=''; }
+  } else { targetEl.textContent=''; }
+
+  // Squawk
+  const sq=a.squawk;
+  const sqEl=document.getElementById('squawk-badge');
+  sqEl.className='squawk-badge';
+  if(sq==='7700'){sqEl.textContent='⚠ 7700 EMERGENCY';sqEl.classList.add('emergency');}
+  else if(sq==='7600'){sqEl.textContent='📻 7600 RADIO FAIL';sqEl.classList.add('radio');}
+  else if(sq==='7500'){sqEl.textContent='🚨 7500 HIJACK';sqEl.classList.add('hijack');}
+  else if(sq){sqEl.textContent='SQK '+sq;sqEl.classList.add('normal');}
+
+  setTxt('spd',a.gs?Math.round(a.gs):'–');
+  setTxt('dist',a._d.toFixed(1));
+
+  if(animate){
+    setLogo(cs);
+    document.getElementById('orig-weather').innerHTML='';
+    document.getElementById('dest-weather').innerHTML='';
+    if(route?.origLat) fetchWeather(route.origLat,route.origLon,'orig').then(w=>showWeather('orig-weather',w));
+    if(route?.destLat) fetchWeather(route.destLat,route.destLon,'dest').then(w=>showWeather('dest-weather',w));
   }
 }
 
-fetch_flights();
-setInterval(fetch_flights, 15000);
+function tick(){
+  countdown--;
+  if(countdown<=0){countdown=15;fetchFlights();}
+  document.getElementById('countdown-val').textContent=countdown;
+  document.getElementById('clock').textContent=new Date().toLocaleTimeString('pl-PL');
+}
+
+fetchFlights();
+setInterval(tick,1000);
 </script>
 </body>
 </html>
