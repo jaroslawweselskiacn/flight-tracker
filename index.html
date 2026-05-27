@@ -323,58 +323,82 @@ const PROXY = 'https://adsb-proxy.weselski-jarek.workers.dev';
 // Logo.dev — darmowy publiczny token
 
 
-// Mapa ICAO prefix -> domena linii lotniczej
-const AIRLINE_DOMAINS = {
-  RYR:'ryanair.com', LOT:'lot.com', WZZ:'wizzair.com', LH:'lufthansa.com',
-  DLH:'lufthansa.com', EZY:'easyjet.com', WZZ:'wizzair.com', WMT:'wizzair.com',
-  EW:'eurowings.com', BA:'britishairways.com', BAW:'britishairways.com',
-  AF:'airfrance.com', AFR:'airfrance.com', KL:'klm.com', KLM:'klm.com',
-  U2:'easyjet.com', OS:'austrian.com', AUA:'austrian.com',
-  TK:'turkishairlines.com', THY:'turkishairlines.com',
-  QR:'qatarairways.com', QTR:'qatarairways.com',
-  EK:'emirates.com', UAE:'emirates.com',
-  LX:'swiss.com', SWR:'swiss.com',
-  TAP:'tap.pt', TP:'tap.pt',
-  ENT:'enterair.pl', BNI:'bielik.pl',
-  ASL:'aslairlines.com', GTI:'atlasair.com',
-  IBE:'iberia.com', AZA:'ita-airways.com',
-  MSC:'airserbia.com', RYS:'ryanair.com',
-  DAL:'delta.com', UAL:'united.com', AAL:'aa.com',
-  SIA:'singaporeair.com', CPA:'cathaypacific.com',
-  ETH:'ethiopianairlines.com', KAL:'koreanair.com',
-  ANA:'ana.co.jp', JAL:'jal.com', VIR:'virginatlantic.com',
-  FDX:'fedex.com', UPS:'ups.com', DHL:'dhl.com',
+const AIRLINE_BRANDS = {
+  RYR:{bg:'#073590',fg:'#f5c300',txt:'RYR'},
+  LOT:{bg:'#00447c',fg:'#ffffff',txt:'LOT'},
+  WZZ:{bg:'#c6007e',fg:'#ffffff',txt:'WZZ'},
+  WMT:{bg:'#c6007e',fg:'#ffffff',txt:'WZZ'},
+  LH: {bg:'#05164d',fg:'#ffad00',txt:'LH'},
+  DLH:{bg:'#05164d',fg:'#ffad00',txt:'LH'},
+  EZY:{bg:'#ff6600',fg:'#ffffff',txt:'EZY'},
+  EW: {bg:'#840038',fg:'#ffffff',txt:'EW'},
+  BA: {bg:'#075aaa',fg:'#ffffff',txt:'BA'},
+  AF: {bg:'#002157',fg:'#ffffff',txt:'AF'},
+  KL: {bg:'#00a1de',fg:'#ffffff',txt:'KLM'},
+  U2: {bg:'#ff6600',fg:'#ffffff',txt:'U2'},
+  OS: {bg:'#c9242c',fg:'#ffffff',txt:'OS'},
+  AUA:{bg:'#c9242c',fg:'#ffffff',txt:'OS'},
+  TK: {bg:'#c70a0c',fg:'#ffffff',txt:'TK'},
+  THY:{bg:'#c70a0c',fg:'#ffffff',txt:'TK'},
+  QR: {bg:'#5c0632',fg:'#c4a44a',txt:'QR'},
+  QTR:{bg:'#5c0632',fg:'#c4a44a',txt:'QR'},
+  EK: {bg:'#d71921',fg:'#ffffff',txt:'EK'},
+  UAE:{bg:'#d71921',fg:'#ffffff',txt:'EK'},
+  LX: {bg:'#cc0000',fg:'#ffffff',txt:'LX'},
+  SWR:{bg:'#cc0000',fg:'#ffffff',txt:'LX'},
+  TAP:{bg:'#007a33',fg:'#ffffff',txt:'TAP'},
+  ENT:{bg:'#e4002b',fg:'#ffffff',txt:'ENT'},
+  ASL:{bg:'#003580',fg:'#ffffff',txt:'ASL'},
+  GTI:{bg:'#003da5',fg:'#ffffff',txt:'GTI'},
+  IBE:{bg:'#d4001a',fg:'#ffffff',txt:'IB'},
+  AZA:{bg:'#006ab3',fg:'#ffffff',txt:'ITA'},
+  MSC:{bg:'#003399',fg:'#ffffff',txt:'JU'},
+  RYS:{bg:'#073590',fg:'#f5c300',txt:'RYS'},
+  BNI:{bg:'#c00000',fg:'#ffffff',txt:'BNI'},
+  DAL:{bg:'#c01933',fg:'#ffffff',txt:'DL'},
+  UAL:{bg:'#002244',fg:'#ffffff',txt:'UA'},
+  AAL:{bg:'#c00000',fg:'#ffffff',txt:'AA'},
+  FDX:{bg:'#4d148c',fg:'#ff6200',txt:'FDX'},
+  UPS:{bg:'#351c15',fg:'#fcb900',txt:'UPS'},
+  DHL:{bg:'#ffcc00',fg:'#d40511',txt:'DHL'},
+  SIA:{bg:'#003f87',fg:'#f0c040',txt:'SQ'},
+  CPA:{bg:'#006564',fg:'#ffffff',txt:'CX'},
+  ETH:{bg:'#007a3d',fg:'#fcdd09',txt:'ET'},
+  KAL:{bg:'#00256a',fg:'#ffffff',txt:'KE'},
+  ANA:{bg:'#003087',fg:'#ffffff',txt:'ANA'},
+  JAL:{bg:'#cc0000',fg:'#ffffff',txt:'JAL'},
+  VIR:{bg:'#e10000',fg:'#ffffff',txt:'VS'},
 };
 
-function getAirlineDomain(cs) {
+function getAirlineBrand(cs) {
   if (!cs) return null;
   const k = cs.trim().replace(/\d/g,'').toUpperCase();
-  return AIRLINE_DOMAINS[k] || AIRLINE_DOMAINS[cs.trim().slice(0,3).toUpperCase()] || null;
+  return AIRLINE_BRANDS[k] || AIRLINE_BRANDS[cs.trim().slice(0,3).toUpperCase()] || null;
 }
 
-function setLogo(domain) {
-  const logoEl = document.getElementById('airline-logo');
-  const bgImg = document.getElementById('logo-bg-img');
+function setLogo(cs) {
+  const badge = document.getElementById('airline-badge');
+  const bgBadge = document.getElementById('logo-bg-badge');
+  const brand = getAirlineBrand(cs);
 
-  if (!domain) {
-    logoEl.classList.remove('loaded'); logoEl.src = '';
-    bgImg.classList.remove('loaded'); bgImg.src = '';
+  if (!badge) return;
+
+  if (!brand) {
+    badge.style.background='transparent'; badge.style.color=''; badge.textContent='';
+    if(bgBadge){ bgBadge.classList.remove('visible'); bgBadge.textContent=''; }
     return;
   }
 
-  const url = `https://img.logokit.com/${domain}`;
+  badge.style.background = brand.bg;
+  badge.style.color = brand.fg;
+  badge.textContent = brand.txt;
 
-  // Logo w nagłówku
-  logoEl.classList.remove('loaded');
-  logoEl.onload = () => logoEl.classList.add('loaded');
-  logoEl.onerror = () => { logoEl.src = ''; };
-  logoEl.src = url;
-
-  // Logo jako delikatne tło
-  bgImg.classList.remove('loaded');
-  bgImg.onload = () => bgImg.classList.add('loaded');
-  bgImg.onerror = () => { bgImg.src = ''; };
-  bgImg.src = url;
+  if(bgBadge){
+    bgBadge.style.background = brand.bg;
+    bgBadge.style.color = brand.fg;
+    bgBadge.textContent = brand.txt;
+    bgBadge.classList.add('visible');
+  }
 }
 
 // THEME
@@ -653,8 +677,14 @@ async function renderAc(a,route,stale,animate){
     setLogo(cs);
     document.getElementById('orig-weather').innerHTML='';
     document.getElementById('dest-weather').innerHTML='';
-    if(route?.origLat) fetchWeather(route.origLat,route.origLon,'orig').then(w=>showWeather('orig-weather',w));
-    if(route?.destLat) fetchWeather(route.destLat,route.destLon,'dest').then(w=>showWeather('dest-weather',w));
+    if(route?.origLat&&route?.origLon)
+      fetchWeather(route.origLat,route.origLon,'orig_'+route.origCode).then(w=>showWeather('orig-weather',w));
+    else
+      document.getElementById('orig-weather').innerHTML='';
+    if(route?.destLat&&route?.destLon)
+      fetchWeather(route.destLat,route.destLon,'dest_'+route.destCode).then(w=>showWeather('dest-weather',w));
+    else
+      document.getElementById('dest-weather').innerHTML='';
   }
 }
 
