@@ -5,46 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar Lotniczy</title>
 <style>
-  body { font-family: monospace; background: #fff; color: #000; padding: 20px; max-width: 600px; margin: 0 auto; }
-  h1 { font-size: 16px; margin-bottom: 20px; color: #555; }
+  body { font-family: monospace; background: #fff; color: #000; padding: 20px; max-width: 500px; margin: 0 auto; }
   #status { font-size: 12px; color: #888; margin-bottom: 16px; }
   table { width: 100%; border-collapse: collapse; }
   td { padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 14px; }
-  td:first-child { color: #888; font-size: 12px; width: 140px; }
-  td:last-child { font-weight: bold; }
-  #callsign-row td:last-child { font-size: 32px; letter-spacing: 3px; padding-top: 4px; padding-bottom: 4px; }
-  #error { color: red; font-size: 13px; margin-top: 10px; }
-  #raw { font-size: 10px; color: #aaa; margin-top: 20px; word-break: break-all; display: none; }
+  td:first-child { color: #888; font-size: 11px; width: 130px; }
+  #r-callsign { font-size: 36px; font-weight: bold; letter-spacing: 3px; }
+  #error { color: red; font-size: 12px; margin-top: 10px; }
 </style>
 </head>
 <body>
-<h1>RADAR LOTNICZY — WROCŁAW</h1>
 <div id="status">Ładowanie...</div>
-<table id="data-table" style="display:none">
-  <tr id="callsign-row"><td>Nr lotu</td><td id="callsign">–</td></tr>
-  <tr><td>Linia lotnicza</td><td id="airline">–</td></tr>
-  <tr><td>Typ samolotu</td><td id="actype">–</td></tr>
-  <tr><td>Wysokość</td><td id="alt">–</td></tr>
-  <tr><td>Prędkość</td><td id="spd">–</td></tr>
-  <tr><td>Kurs</td><td id="hdg">–</td></tr>
-  <tr><td>Odległość</td><td id="dist">–</td></tr>
-  <tr><td>ICAO hex</td><td id="icao">–</td></tr>
-  <tr><td>Rejestracja</td><td id="reg">–</td></tr>
+<table id="tbl" style="display:none">
+  <tr><td>NR LOTU</td><td id="r-callsign"></td></tr>
+  <tr><td>Linia lotnicza</td><td id="r-airline"></td></tr>
+  <tr><td>Typ samolotu</td><td id="r-type"></td></tr>
+  <tr><td>Wysokość</td><td id="r-alt"></td></tr>
+  <tr><td>Prędkość</td><td id="r-spd"></td></tr>
+  <tr><td>Kurs</td><td id="r-hdg"></td></tr>
+  <tr><td>Odległość</td><td id="r-dist"></td></tr>
+  <tr><td>Rejestracja</td><td id="r-reg"></td></tr>
+  <tr><td>ICAO</td><td id="r-icao"></td></tr>
 </table>
 <div id="error"></div>
-<div id="raw"></div>
 
 <script>
 const LAT = 51.141866533668555;
 const LON = 17.148976627342574;
-const DIST_NM = 100; // mila morska, ~185km
+const DIST_NM = 100;
 
 const AIRLINES = {
   LOT:'LOT Polish Airlines', LH:'Lufthansa', FR:'Ryanair', W6:'Wizz Air',
   EW:'Eurowings', BA:'British Airways', AF:'Air France', KL:'KLM',
   U2:'easyJet', OS:'Austrian', TK:'Turkish Airlines', QR:'Qatar Airways',
   EK:'Emirates', LX:'Swiss', RYR:'Ryanair', DLH:'Lufthansa',
-  WZZ:'Wizz Air', EZY:'easyJet', THY:'Turkish Airlines',
+  WZZ:'Wizz Air', EZY:'easyJet', THY:'Turkish Airlines', UAE:'Emirates',
 };
 
 const TYPES = {
@@ -68,65 +63,51 @@ function airline(cs){
   return AIRLINES[k] || AIRLINES[cs.trim().slice(0,3).toUpperCase()] || '–';
 }
 function actype(t){ return t ? (TYPES[t.toUpperCase()] || t.toUpperCase()) : '–'; }
+function set(id, val){ document.getElementById(id).textContent = val || '–'; }
 
-async function fetch_flights(){
+async function fetchFlights(){
   document.getElementById('error').textContent = '';
-  const url = `https://opendata.adsb.fi/api/v2/lat/${LAT}/lon/${LON}/dist/${DIST_NM}`;
+  const target = `https://opendata.adsb.fi/api/v2/lat/${LAT}/lon/${LON}/dist/${DIST_NM}`;
+  const url = `https://corsproxy.io/?${encodeURIComponent(target)}`;
   try {
     const r = await fetch(url);
-    const txt = await r.text();
-    // debug: pokaż raw odpowiedź
-    document.getElementById('raw').textContent = txt.slice(0, 500);
-    document.getElementById('raw').style.display = 'block';
-
-    if(!r.ok) throw new Error('HTTP ' + r.status + ': ' + txt.slice(0,100));
-    const data = JSON.parse(txt);
-    const ac_list = data.ac || data.aircraft || data || [];
-
-    if(!Array.isArray(ac_list) || ac_list.length === 0){
-      document.getElementById('status').textContent = 'Brak samolotów w zasięgu. Ostatnio sprawdzono: ' + new Date().toLocaleTimeString('pl-PL');
-      document.getElementById('data-table').style.display = 'none';
-      return;
-    }
-
-    // filtruj latające, posortuj po odległości
-    const flying = ac_list
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const list = (data.ac || [])
       .filter(a => a.lat != null && a.lon != null && a.alt_baro !== 'ground')
-      .map(a => ({ ...a, _d: distKm(LAT, LON, a.lat, a.lon) }))
+      .map(a => ({...a, _d: distKm(LAT, LON, a.lat, a.lon)}))
       .sort((a,b) => a._d - b._d);
 
-    if(flying.length === 0){
-      document.getElementById('status').textContent = 'Tylko samoloty na ziemi w zasięgu.';
-      document.getElementById('data-table').style.display = 'none';
+    if(list.length === 0){
+      document.getElementById('status').textContent = 'Brak samolotów w zasięgu · ' + new Date().toLocaleTimeString('pl-PL');
+      document.getElementById('tbl').style.display = 'none';
       return;
     }
 
-    const a = flying[0];
-    const cs = (a.flight || '').trim() || a.hex || '–';
-    const alt_m = a.alt_baro && a.alt_baro !== 'ground' ? Math.round(a.alt_baro * 0.3048) : '–';
-    const spd_kmh = a.gs ? Math.round(a.gs * 1.852) : '–';
+    const a = list[0];
+    const cs = (a.flight||'').trim() || a.hex || '–';
+    const alt_m = a.alt_baro && a.alt_baro !== 'ground' ? Math.round(a.alt_baro * 0.3048) + ' m' : '–';
+    const spd = a.gs ? Math.round(a.gs * 1.852) + ' km/h' : '–';
 
-    document.getElementById('callsign').textContent = cs;
-    document.getElementById('airline').textContent = airline(cs);
-    document.getElementById('actype').textContent = actype(a.t || a.type_code);
-    document.getElementById('alt').textContent = alt_m !== '–' ? alt_m + ' m' : '–';
-    document.getElementById('spd').textContent = spd_kmh !== '–' ? spd_kmh + ' km/h' : '–';
-    document.getElementById('hdg').textContent = a.track != null ? Math.round(a.track) + '°' : '–';
-    document.getElementById('dist').textContent = a._d.toFixed(1) + ' km';
-    document.getElementById('icao').textContent = (a.hex || '–').toUpperCase();
-    document.getElementById('reg').textContent = a.r || '–';
+    set('r-callsign', cs);
+    set('r-airline', airline(cs));
+    set('r-type', actype(a.t));
+    set('r-alt', alt_m);
+    set('r-spd', spd);
+    set('r-hdg', a.track != null ? Math.round(a.track) + '°' : '–');
+    set('r-dist', a._d.toFixed(1) + ' km');
+    set('r-reg', a.r);
+    set('r-icao', (a.hex||'').toUpperCase());
 
-    document.getElementById('data-table').style.display = 'table';
-    document.getElementById('status').textContent = 'Najbliższy z ' + flying.length + ' samolotów · ' + new Date().toLocaleTimeString('pl-PL');
-
+    document.getElementById('tbl').style.display = 'table';
+    document.getElementById('status').textContent = 'Najbliższy z ' + list.length + ' samolotów · ' + new Date().toLocaleTimeString('pl-PL');
   } catch(e) {
     document.getElementById('error').textContent = 'Błąd: ' + e.message;
-    document.getElementById('status').textContent = 'Nie udało się pobrać danych.';
   }
 }
 
-fetch_flights();
-setInterval(fetch_flights, 15000);
+fetchFlights();
+setInterval(fetchFlights, 15000);
 </script>
 </body>
 </html>
