@@ -529,18 +529,16 @@ function validateRoute(ac, route){
     route.destLat,route.destLon
   );
 
-  // Tolerancja: 20% długości trasy, min 80 km, max 400 km
-  const tolerance=Math.min(400,Math.max(80,routeLen*0.20));
-  if(distFromRoute>tolerance) return false;
-
-  // Sprawdź kierunek lotu
+  // Sprawdź tylko kierunek lotu — samoloty nie lecą linią prostą więc
+  // odległość od linii prostej jest zawodna. Kurs ±90° wystarczy żeby
+  // odfiltrować totalnie błędne trasy (np. Poznań→Tirana zamiast WRO→Korfu)
   if(ac.track!=null){
     const bearingAB=bearing(route.origLat,route.origLon,route.destLat,route.destLon);
     const bearingBA=bearing(route.destLat,route.destLon,route.origLat,route.origLon);
     const track=ac.track;
     const diffAB=Math.abs(((track-bearingAB+180)%360)-180);
     const diffBA=Math.abs(((track-bearingBA+180)%360)-180);
-    if(diffAB>70&&diffBA>70) return false;
+    if(diffAB>90&&diffBA>90) return false;
   }
 
   return true;
